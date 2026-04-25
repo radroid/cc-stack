@@ -124,7 +124,7 @@ By design, PostHog is a **no-op in development** — no events, no network traff
 bunx wrangler login
 ```
 
-Edit `wrangler.jsonc` → change `"name": "create-club-stack"` to your worker name.
+Edit `wrangler.jsonc` → change `"name": "cc-stack"` to your worker name.
 
 Set production secrets on the Worker:
 

@@ -1,4 +1,4 @@
-# create-club-stack
+# cc-stack
 
 A PWA-ready, opinionated Next.js starter wired with the full Create➕Club stack — clone it, log in to a few services, and start building product.
 
@@ -34,7 +34,7 @@ A PWA-ready, opinionated Next.js starter wired with the full Create➕Club stack
 ## Use this template
 
 ```bash
-bunx create-next-app@latest my-app -e https://github.com/<you>/create-club-stack
+bunx create-next-app@latest my-app -e https://github.com/radroid/cc-stack
 cd my-app
 bun install
 cp .env.example .env.local
