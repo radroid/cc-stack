@@ -1,164 +1,44 @@
 # SETUP.md
 
-One-time setup after cloning this template. Each step lists the **exact CLI commands** to run plus any manual UI steps that can't be automated (account creation, OAuth approval, etc).
-
-> Order matters — Convex first (creates `.env.local`), then everything else fills in keys.
-
----
-
-## 0. Prereqs
+Two commands set up the entire stack:
 
 ```bash
-bun --version          # need 1.1+
-gh auth status         # for repo creation later
+bun run setup        # dev: Convex, Clerk, VAPID, optionally PostHog
+bun run setup:prod   # prod: layers prod keys + Cloudflare push (run later)
 ```
 
-If you don't have Bun: `curl -fsSL https://bun.sh/install | bash`.
+Both are **idempotent** — re-running them skips anything already configured. Pass `--force` to redo a step, or `--only=<phase>` (e.g. `--only=clerk`) to re-run a single integration.
+
+The CLI handles all cross-wiring (Clerk JWT issuer → Convex env, Cloudflare URL → Clerk allowed origins, VAPID → both `.env.local` and Convex env). You'll only be asked to paste values that have no API surface — three in total for prod (Convex prod deploy key, Clerk prod publishable + secret keys).
 
 ---
 
-## 1. Install + scaffold env
+## Prereqs
+
+```bash
+bun --version          # 1.1+
+gh auth status         # for repo hosting later (optional)
+```
+
+If Bun isn't installed: `curl -fsSL https://bun.sh/install | bash`.
+
+---
+
+## Dev — `bun run setup`
 
 ```bash
 bun install
-cp .env.example .env.local
+bun run setup
 ```
 
-Leave `.env.local` open — you'll fill it in as you go.
+What happens, in order:
 
----
+1. **Convex (cloud dev)** — `bunx convex dev --once --configure new` runs. Browser opens for login on first run; project gets created; `NEXT_PUBLIC_CONVEX_URL` + `CONVEX_DEPLOYMENT` are written to `.env.local`. `convex/_generated/` is created.
+2. **Clerk (dev)** — opens the Clerk dashboard. You create an app and paste back the dev publishable + secret keys. The CLI then uses Clerk's Backend API to derive `CLERK_JWT_ISSUER_DOMAIN` and create the `convex` JWT template — no manual UI clicking required for that. The issuer is also pushed to Convex via `bunx convex env set`.
+3. **VAPID** — generates a fresh keypair locally, writes the public key to `.env.local`, mirrors private + subject to Convex env.
+4. **PostHog** *(optional)* — defaults to off in dev. Opt in if you want analytics in dev too: paste a personal API key, pick or create a project, the CLI creates a "development" environment (PostHog's Environments feature) and writes the env's write-only token to `.env.local`.
 
-## 2. Convex — backend + database
-
-```bash
-bunx convex dev
-```
-
-The first run will:
-
-- Open a browser to log in
-- Prompt you to **create a new project** (pick any name)
-- Write `NEXT_PUBLIC_CONVEX_URL=…` into `.env.local` automatically
-- Start watching `convex/` and pushing on save — leave this terminal running
-
----
-
-## 3. Clerk — authentication
-
-**Manual (UI):**
-
-1. Go to <https://dashboard.clerk.com> → **Create application** → enable Email + Google sign-in
-2. Copy from **API Keys** page:
-   - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
-   - `CLERK_SECRET_KEY`
-3. Go to **JWT Templates** → **New template** → choose **Convex** → name it exactly `convex` → copy the **Issuer** URL
-
-**CLI:**
-
-```bash
-# Paste the Issuer URL into .env.local as CLERK_JWT_ISSUER_DOMAIN
-# Then mirror it to Convex so the backend can verify Clerk tokens:
-bunx convex env set CLERK_JWT_ISSUER_DOMAIN <issuer-url>
-```
-
-Restart `bunx convex dev` after setting the env var.
-
----
-
-## 4. (Optional) GCP — custom Google OAuth client for Clerk
-
-Only needed if you want production Google sign-in branded as your app instead of "via Clerk":
-
-**Manual (UI):**
-
-1. <https://console.cloud.google.com> → create project → **APIs & Services → Credentials**
-2. **Create credentials → OAuth client ID** → Web application
-3. Authorized redirect URIs: copy from Clerk Dashboard → **Social Connections → Google** → "Use custom credentials"
-4. Paste the GCP **Client ID + Client Secret** back into Clerk
-
-No CLI step. No env vars in this repo — Clerk holds the credentials.
-
-Skip this for dev. Clerk's shared OAuth client just works.
-
----
-
-## 5. Web Push — VAPID keypair
-
-```bash
-bun run vapid
-```
-
-Output gives you a `Public Key:` and `Private Key:`.
-
-- Paste **public** as `NEXT_PUBLIC_VAPID_PUBLIC_KEY` in `.env.local`
-- Paste **private** as `VAPID_PRIVATE_KEY` in `.env.local`
-- Set `VAPID_SUBJECT=mailto:you@example.com` in `.env.local`
-- Mirror the private + subject to Convex (the server signs pushes there):
-
-```bash
-bunx convex env set VAPID_PRIVATE_KEY <private-key>
-bunx convex env set VAPID_SUBJECT mailto:you@example.com
-```
-
----
-
-## 6. PostHog — analytics (production only)
-
-By design, PostHog is a **no-op in development** — no events, no network traffic. You only need to configure it for production.
-
-**Manual (UI):**
-
-1. <https://us.posthog.com> → create project → **Project settings → Project API key**
-2. Copy the `phc_…` token
-
-**Env:**
-
-- Add `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` and `NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com` to your **production** env (Cloudflare secret in step 7), **not** `.env.local`.
-- To opt in from a preview env, set `NEXT_PUBLIC_POSTHOG_FORCE_ENABLE=1` there.
-
----
-
-## 7. Cloudflare — deployment
-
-```bash
-bunx wrangler login
-```
-
-Edit `wrangler.jsonc` → change `"name": "cc-stack"` to your worker name.
-
-Set production secrets on the Worker:
-
-```bash
-bunx wrangler secret put NEXT_PUBLIC_CONVEX_URL
-bunx wrangler secret put NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-bunx wrangler secret put CLERK_SECRET_KEY
-bunx wrangler secret put NEXT_PUBLIC_VAPID_PUBLIC_KEY
-bunx wrangler secret put NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN
-bunx wrangler secret put NEXT_PUBLIC_POSTHOG_HOST
-bunx wrangler secret put NEXT_PUBLIC_APP_URL   # e.g. https://your-app.pages.dev
-```
-
-(Repeat for any other prod-only vars.)
-
-Deploy:
-
-```bash
-bun run deploy
-```
-
----
-
-## 8. GitHub
-
-```bash
-git add -A
-git commit -m "chore: initial setup"
-gh repo create <name> --public --source=. --push
-```
-
----
-
-## 9. Run it
+After it finishes, two terminals:
 
 ```bash
 # Terminal 1
@@ -172,14 +52,81 @@ Open <http://localhost:3000>.
 
 ---
 
-## Where things live (cheat sheet)
+## Prod — `bun run setup:prod`
 
-| Need to … | Edit |
+Run when you're ready to deploy. Prereq: `.env.local` exists (i.e., dev setup is done).
+
+```bash
+bun run setup:prod
+```
+
+What happens:
+
+1. **Pre-flight** — verifies `bunx wrangler whoami`. If you're not logged in, the CLI offers to run `bunx wrangler login`.
+2. **Worker name + URL preview** — reads `wrangler.jsonc`, lets you rename, prints the eventual URL (`https://<name>.<your-subdomain>.workers.dev`) so you know what's about to land where. *(Set `CLOUDFLARE_API_TOKEN` to enable subdomain preview before first deploy — otherwise the URL prints after the first deploy.)*
+3. **Clerk (prod)** — opens the dashboard so you can promote the dev instance to production. Paste the prod publishable + secret keys. CLI calls Backend API to: derive prod JWT issuer, create the `convex` template, allow-list the Worker URL.
+4. **Convex (prod)** — opens the dashboard so you can mint a Production deploy key. Paste it. CLI runs `bunx convex deploy` to provision the prod deployment, then mirrors `CLERK_JWT_ISSUER_DOMAIN` + VAPID secrets to the prod backend env.
+5. **PostHog (prod)** — re-uses your personal API key, creates `production` and `preview` environments in your PostHog project, writes the prod env's token to `.env.production`.
+6. **Cloudflare** — bulk-uploads everything from `.env.production` to the Worker via `bunx wrangler secret bulk` (excluding the Convex deploy key).
+
+Then:
+
+```bash
+bun run deploy
+```
+
+---
+
+## Manual fallback (if the CLI fails)
+
+If any step blows up, here's how to do it by hand. (Open an issue if you hit this — the CLI should handle it.)
+
+### Convex
+```bash
+bunx convex dev   # follow prompts; writes NEXT_PUBLIC_CONVEX_URL to .env.local
+```
+
+### Clerk
+1. <https://dashboard.clerk.com> → create app
+2. API Keys → copy publishable + secret → paste into `.env.local`
+3. JWT Templates → New → "Convex" → name it `convex` → copy Issuer URL into `.env.local` as `CLERK_JWT_ISSUER_DOMAIN`
+4. `bunx convex env set CLERK_JWT_ISSUER_DOMAIN <issuer>`
+
+### VAPID
+```bash
+bun run vapid
+# paste public key into .env.local as NEXT_PUBLIC_VAPID_PUBLIC_KEY
+# paste private key into .env.local as VAPID_PRIVATE_KEY
+bunx convex env set VAPID_PRIVATE_KEY <key>
+bunx convex env set VAPID_SUBJECT mailto:you@example.com
+```
+
+### PostHog
+1. <https://us.posthog.com> → project → API key
+2. Add to `.env.production` (not `.env.local`): `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN`, `NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com`
+3. *(Optional)* Project → Settings → Environments → enable for cleaner separation
+
+### Cloudflare
+```bash
+bunx wrangler login
+bunx wrangler secret put NEXT_PUBLIC_CONVEX_URL
+bunx wrangler secret put NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+bunx wrangler secret put CLERK_SECRET_KEY
+# ...repeat for every var in .env.production
+bun run deploy
+```
+
+---
+
+## Cheat sheet
+
+| Need to … | Run |
 | --- | --- |
-| Add a Convex query | `convex/<name>.ts` |
+| Configure dev from scratch | `bun run setup` |
+| Add prod | `bun run setup:prod` |
+| Re-do one step | `bun run setup -- --force --only=clerk` |
+| Add a Convex query | new file in `convex/` (e.g. `convex/posts.ts`) |
 | Add a shadcn component | `bunx shadcn add <name>` |
 | Apply a TweakCN theme | `bunx shadcn add <theme-url>` |
-| Wire a new provider in the tree | `app/layout.tsx` |
-| Tune service-worker caching | `public/sw.js` (bump `CACHE_NAME`) |
-| Add a tracked event | `posthog.capture("event_name", { ... })` anywhere — no-op in dev |
-| Subscribe a user to push | `usePushSubscription()` from `components/pwa/use-push-subscription.ts` |
+| Bump the SW cache | edit `CACHE_NAME` in `public/sw.js` |
+| Deploy | `bun run deploy` |
