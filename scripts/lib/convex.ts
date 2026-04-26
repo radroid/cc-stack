@@ -5,21 +5,23 @@ import { run, runOrFail } from "./exec";
 /**
  * Run `bunx convex dev --once` to provision (or sync) the dev deployment.
  *
- * The Convex CLI doesn't accept a project name flag — naming happens in
- * its interactive prompt (which we surface via stdio inheritance). We only
- * pass `--dev-deployment cloud` to force the cloud path and skip Convex's
- * "local or cloud?" question.
+ * Convex's CLI rejects `--dev-deployment` and `--team`/`--project` unless
+ * paired with `--configure`. So:
  *
- * On first run (no CONVEX_DEPLOYMENT in .env.local), Convex walks the user
- * through login + team + new-or-existing project. On subsequent runs it
- * just syncs against the existing deployment.
+ * - **First run** (no `CONVEX_DEPLOYMENT` in .env.local): pass `--configure new
+ *   --dev-deployment cloud`. Convex prompts for login, team, and project
+ *   name; we surface those via stdio inheritance.
+ * - **Subsequent runs**: pass nothing — Convex picks up the existing
+ *   deployment from `.env.local` and just syncs.
  *
  * Pass `configureNew: true` to force the "new project" flow even if a
- * CONVEX_DEPLOYMENT is already configured.
+ * `CONVEX_DEPLOYMENT` is already configured.
  */
 export async function devOnce(opts: { configureNew?: boolean } = {}): Promise<void> {
-  const args = ["convex", "dev", "--once", "--dev-deployment", "cloud"];
-  if (opts.configureNew) args.push("--configure", "new");
+  const args = ["convex", "dev", "--once"];
+  if (opts.configureNew) {
+    args.push("--configure", "new", "--dev-deployment", "cloud");
+  }
   await runOrFail("bunx", args, { inherit: true });
 }
 

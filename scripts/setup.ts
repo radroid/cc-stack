@@ -82,12 +82,13 @@ async function runConvexPhase(env: ReturnType<typeof loadEnv>, force: boolean) {
 
   // Convex's CLI doesn't accept a project-name flag — naming happens in its
   // interactive prompt (which we surface via stdio inheritance below).
+  const configureNew = !hasDeployment || force;
   info(
     hasDeployment
       ? "Re-running `bunx convex dev` to sync your existing deployment…"
       : "Launching `bunx convex dev` — log in, pick a team, and name your project when prompted.",
   );
-  await devOnce({ configureNew: force && hasDeployment });
+  await devOnce({ configureNew });
 
   // Convex CLI writes NEXT_PUBLIC_CONVEX_URL to .env.local — reload.
   const reloaded = loadEnv(ENV_LOCAL);
