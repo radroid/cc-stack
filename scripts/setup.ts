@@ -74,21 +74,20 @@ async function runConvexPhase(env: ReturnType<typeof loadEnv>, force: boolean) {
   header("Convex", "Cloud dev deployment + generated types");
 
   const existing = getEnv(env, "NEXT_PUBLIC_CONVEX_URL");
-  if (existing && !force) {
+  const hasDeployment = !!getEnv(env, "CONVEX_DEPLOYMENT");
+  if (existing && hasDeployment && !force) {
     success(`Convex already configured (${existing}). Skipping.`);
     return env;
   }
 
-  const projectName = await exitOnCancel(
-    await p.text({
-      message: "Convex project name",
-      placeholder: "cc-stack",
-      defaultValue: "cc-stack",
-    }),
+  // Convex's CLI doesn't accept a project-name flag — naming happens in its
+  // interactive prompt (which we surface via stdio inheritance below).
+  info(
+    hasDeployment
+      ? "Re-running `bunx convex dev` to sync your existing deployment…"
+      : "Launching `bunx convex dev` — log in, pick a team, and name your project when prompted.",
   );
-
-  info("Launching `bunx convex dev` — log in via the browser if prompted.");
-  await devOnce({ projectName, firstRun: true });
+  await devOnce({ configureNew: force && hasDeployment });
 
   // Convex CLI writes NEXT_PUBLIC_CONVEX_URL to .env.local — reload.
   const reloaded = loadEnv(ENV_LOCAL);
