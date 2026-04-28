@@ -9,7 +9,7 @@
 import { resolve } from "node:path";
 import pc from "picocolors";
 import { ClerkClient } from "./lib/clerk";
-import { setEnvMany as convexSetEnvMany, devOnce } from "./lib/convex";
+import { setEnvMany as convexSetEnvMany, devOnce, devOnceAllowFail } from "./lib/convex";
 import { getEnv, loadEnv, saveEnv, setEnvMany } from "./lib/env";
 import { openUrl } from "./lib/open";
 import { ANALYTICS_HOSTS, PostHogClient, type PostHogRegion } from "./lib/posthog";
@@ -88,15 +88,32 @@ async function runConvexPhase(env: ReturnType<typeof loadEnv>, force: boolean) {
       ? "Re-running `bunx convex dev` to sync your existing deployment…"
       : "Launching `bunx convex dev` — log in, pick a team, and name your project when prompted.",
   );
-  await devOnce({ configureNew });
 
-  // Convex CLI writes NEXT_PUBLIC_CONVEX_URL to .env.local — reload.
-  const reloaded = loadEnv(ENV_LOCAL);
+  // First push tolerates failure: auth.config.ts references CLERK_JWT_ISSUER_DOMAIN,
+  // which the deployment doesn't have set yet. The deployment itself is provisioned
+  // before that validator runs, so .env.local will have CONVEX_DEPLOYMENT either way.
+  const first = await devOnceAllowFail({ configureNew });
+
+  // Reload — Convex CLI writes NEXT_PUBLIC_CONVEX_URL + CONVEX_DEPLOYMENT before pushing code.
+  let reloaded = loadEnv(ENV_LOCAL);
   const url = getEnv(reloaded, "NEXT_PUBLIC_CONVEX_URL");
   if (!url)
     fail(
       "Convex did not write NEXT_PUBLIC_CONVEX_URL — try again or run `bunx convex dev` manually.",
     );
+
+  if (!first.ok) {
+    // Almost certainly the chicken-and-egg with auth.config.ts. Set placeholders
+    // on the new deployment and retry the push.
+    info("Seeding placeholder env vars on the new deployment so the first push can succeed…");
+    await convexSetEnvMany({
+      CLERK_JWT_ISSUER_DOMAIN: "https://placeholder.clerk.accounts.dev",
+    });
+    info("Retrying `bunx convex dev --once` to push functions…");
+    await devOnce(); // no --configure flags; uses the deployment we just created
+    reloaded = loadEnv(ENV_LOCAL);
+  }
+
   success(`Convex provisioned: ${url}`);
   return reloaded;
 }

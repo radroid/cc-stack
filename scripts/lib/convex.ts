@@ -25,6 +25,28 @@ export async function devOnce(opts: { configureNew?: boolean } = {}): Promise<vo
   await runOrFail("bunx", args, { inherit: true });
 }
 
+/**
+ * Like `devOnce`, but tolerates a non-zero exit. Used during first-run
+ * provisioning, where Convex's deploy-time validator rejects the push because
+ * `CLERK_JWT_ISSUER_DOMAIN` is referenced in `auth.config.ts` but isn't set on
+ * the freshly-created deployment yet (chicken-and-egg). We swallow the error,
+ * set placeholder env vars, then retry.
+ */
+export async function devOnceAllowFail(
+  opts: { configureNew?: boolean } = {},
+): Promise<{ ok: boolean }> {
+  const args = ["convex", "dev", "--once"];
+  if (opts.configureNew) {
+    args.push("--configure", "new", "--dev-deployment", "cloud");
+  }
+  try {
+    await runOrFail("bunx", args, { inherit: true });
+    return { ok: true };
+  } catch {
+    return { ok: false };
+  }
+}
+
 export async function setEnv(
   key: string,
   value: string,
