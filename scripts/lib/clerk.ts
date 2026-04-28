@@ -23,7 +23,10 @@ type JwtTemplate = {
 };
 
 export class ClerkClient {
-  constructor(private secretKey: string) {}
+  constructor(
+    private secretKey: string,
+    private publishableKey?: string,
+  ) {}
 
   private headers(): Record<string, string> {
     return { Authorization: `Bearer ${this.secretKey}` };
@@ -33,13 +36,22 @@ export class ClerkClient {
     return request<Instance>(`${CLERK_API}/instance`, { headers: this.headers() });
   }
 
-  /** Returns `https://<frontend_api>` — what Convex's `auth.config.ts` expects. */
+  /**
+   * Returns `https://<frontend_api>` — what Convex's `auth.config.ts` expects.
+   *
+   * Prefers decoding from the publishable key (always populated, no API call
+   * needed). Falls back to `/v1/instance` if no publishable key was passed to
+   * the constructor.
+   */
   async getJwtIssuerDomain(): Promise<string> {
+    if (this.publishableKey) {
+      return jwtIssuerFromPublishableKey(this.publishableKey);
+    }
     const inst = await this.getInstance();
     if (!inst.frontend_api) {
       throw new Error(
-        "Clerk instance has no frontend_api — is this a fresh dev instance? " +
-          "Try refreshing the dashboard and re-running.",
+        "Clerk instance has no frontend_api — pass the publishable key to ClerkClient " +
+          "or refresh the dashboard and re-run.",
       );
     }
     return `https://${inst.frontend_api}`;
@@ -99,4 +111,36 @@ export class ClerkClient {
       body,
     });
   }
+}
+
+/**
+ * Decode the Frontend API hostname from a Clerk publishable key.
+ *
+ * Publishable keys are `pk_(test|live)_<base64(<host>$)>`. The trailing `$`
+ * is a sentinel Clerk uses to validate the encoding. We strip it to get the
+ * raw hostname, e.g. `thankful-dane-92.clerk.accounts.dev`.
+ *
+ * This is more reliable than calling `/v1/instance` for `frontend_api`, which
+ * can return undefined on fresh dev instances.
+ */
+export function frontendApiFromPublishableKey(pk: string): string {
+  const m = /^pk_(test|live)_(.+)$/.exec(pk.trim());
+  if (!m) throw new Error(`Not a Clerk publishable key: ${pk.slice(0, 12)}…`);
+  const encoded = m[2];
+  let decoded: string;
+  try {
+    decoded = Buffer.from(encoded, "base64").toString("utf8");
+  } catch {
+    throw new Error("Could not base64-decode the publishable key payload.");
+  }
+  const host = decoded.replace(/\$+$/, "");
+  if (!host || !host.includes(".")) {
+    throw new Error(`Decoded publishable key payload doesn't look like a hostname: ${decoded}`);
+  }
+  return host;
+}
+
+/** Convenience: returns the JWT issuer URL (`https://<host>`) for a publishable key. */
+export function jwtIssuerFromPublishableKey(pk: string): string {
+  return `https://${frontendApiFromPublishableKey(pk)}`;
 }

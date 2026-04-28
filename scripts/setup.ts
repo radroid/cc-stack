@@ -167,7 +167,7 @@ async function runClerkPhase(env: ReturnType<typeof loadEnv>, force: boolean) {
   const spinner = p.spinner();
   spinner.start("Wiring up Clerk via Backend API…");
   try {
-    const clerk = new ClerkClient(secret);
+    const clerk = new ClerkClient(secret, publishable);
     const issuer = await clerk.getJwtIssuerDomain();
     await clerk.ensureConvexJwtTemplate();
     spinner.stop("Clerk wired.");

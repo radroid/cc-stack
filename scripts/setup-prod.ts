@@ -189,7 +189,7 @@ async function runClerkProd(
   const spinner = p.spinner();
   spinner.start("Configuring Clerk prod via Backend API…");
   try {
-    const clerk = new ClerkClient(secret);
+    const clerk = new ClerkClient(secret, pub);
     const issuer = await clerk.getJwtIssuerDomain();
     await clerk.ensureConvexJwtTemplate();
     if (workerUrl) {
