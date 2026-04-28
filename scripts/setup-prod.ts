@@ -19,7 +19,7 @@ import {
 } from "./lib/cloudflare";
 import { setEnvMany as convexSetEnvMany, deployProd } from "./lib/convex";
 import { envToObject, getEnv, loadEnv, parseEnvObject, saveEnv, setEnvMany } from "./lib/env";
-import { openUrl } from "./lib/open";
+import { confirmOpen } from "./lib/open";
 import { ANALYTICS_HOSTS, PostHogClient, type PostHogRegion } from "./lib/posthog";
 import { exitOnCancel, fail, header, info, note, p, success, warn } from "./lib/prompts";
 
@@ -169,10 +169,7 @@ async function runClerkProd(
     ].join("\n"),
     "Clerk dashboard",
   );
-  const open = await exitOnCancel(
-    await p.confirm({ message: "Open Clerk dashboard?", initialValue: true }),
-  );
-  if (open) openUrl("https://dashboard.clerk.com");
+  await confirmOpen("https://dashboard.clerk.com", "Open Clerk dashboard");
 
   const { publishable: pub, secret } = await collectProdClerkKeys();
 
@@ -269,13 +266,10 @@ async function runConvexProd(prod: ReturnType<typeof loadEnv>, force: boolean) {
   }
 
   note(
-    "Generate a Production deploy key at:\nhttps://dashboard.convex.dev → your project → Settings → Deploy Keys",
+    "In the dashboard, go to: your project → Settings → Deploy Keys → Generate Production key.",
     "Convex dashboard",
   );
-  const open = await exitOnCancel(
-    await p.confirm({ message: "Open the dashboard?", initialValue: true }),
-  );
-  if (open) openUrl("https://dashboard.convex.dev");
+  await confirmOpen("https://dashboard.convex.dev", "Open Convex dashboard");
 
   const deployKey = await exitOnCancel(
     await p.password({

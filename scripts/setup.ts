@@ -12,7 +12,7 @@ import { ClerkClient } from "./lib/clerk";
 import { readClipboard } from "./lib/clipboard";
 import { setEnvMany as convexSetEnvMany, devOnce, devOnceAllowFail } from "./lib/convex";
 import { getEnv, loadEnv, parseEnvObject, saveEnv, setEnvMany } from "./lib/env";
-import { openUrl } from "./lib/open";
+import { confirmOpen } from "./lib/open";
 import { ANALYTICS_HOSTS, PostHogClient, type PostHogRegion } from "./lib/posthog";
 import { exitOnCancel, fail, header, info, note, p, success, warn } from "./lib/prompts";
 import { generateVapidKeys } from "./lib/vapid";
@@ -145,10 +145,7 @@ async function runClerkPhase(env: ReturnType<typeof loadEnv>, force: boolean) {
     "Clerk dashboard",
   );
 
-  const proceed = await exitOnCancel(
-    await p.confirm({ message: "Open Clerk dashboard now?", initialValue: true }),
-  );
-  if (proceed) openUrl("https://dashboard.clerk.com/apps/new");
+  await confirmOpen("https://dashboard.clerk.com/apps/new", "Open Clerk dashboard");
 
   const { publishable, secret } = await collectClerkKeys();
 
@@ -309,11 +306,10 @@ async function runPostHogPhase(env: ReturnType<typeof loadEnv>, force: boolean) 
 
   const personalKeyUrl = `https://${region}.posthog.com/settings/user-api-keys`;
   note(
-    `Generate a personal API key at:\n${personalKeyUrl}\n\nGive it scopes: project:write, organization:read.`,
+    "You'll need a PostHog personal API key with scopes:\n  project:write, organization:read",
     "PostHog",
   );
-  const open = await exitOnCancel(await p.confirm({ message: "Open it now?", initialValue: true }));
-  if (open) openUrl(personalKeyUrl);
+  await confirmOpen(personalKeyUrl, "Open");
 
   const personalKey = await exitOnCancel(
     await p.password({
