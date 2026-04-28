@@ -10,6 +10,7 @@
 import { resolve } from "node:path";
 import pc from "picocolors";
 import { ClerkClient } from "./lib/clerk";
+import { readClipboard } from "./lib/clipboard";
 import {
   getWorkersDevSubdomain,
   putSecretsBulk,
@@ -17,7 +18,7 @@ import {
   login as wranglerLogin,
 } from "./lib/cloudflare";
 import { setEnvMany as convexSetEnvMany, deployProd } from "./lib/convex";
-import { envToObject, getEnv, loadEnv, saveEnv, setEnvMany } from "./lib/env";
+import { envToObject, getEnv, loadEnv, parseEnvObject, saveEnv, setEnvMany } from "./lib/env";
 import { openUrl } from "./lib/open";
 import { ANALYTICS_HOSTS, PostHogClient, type PostHogRegion } from "./lib/posthog";
 import { exitOnCancel, fail, header, info, note, p, success, warn } from "./lib/prompts";
@@ -173,18 +174,7 @@ async function runClerkProd(
   );
   if (open) openUrl("https://dashboard.clerk.com");
 
-  const pub = await exitOnCancel(
-    await p.text({
-      message: "PROD NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY (pk_live_…)",
-      validate: (v) => (v?.startsWith("pk_live_") ? undefined : "Should start with pk_live_"),
-    }),
-  );
-  const secret = await exitOnCancel(
-    await p.password({
-      message: "PROD CLERK_SECRET_KEY (sk_live_…)",
-      validate: (v) => (v?.startsWith("sk_live_") ? undefined : "Should start with sk_live_"),
-    }),
-  );
+  const { publishable: pub, secret } = await collectProdClerkKeys();
 
   const spinner = p.spinner();
   spinner.start("Configuring Clerk prod via Backend API…");
@@ -215,6 +205,59 @@ async function runClerkProd(
 // ---------------------------------------------------------------------------
 // Convex prod
 // ---------------------------------------------------------------------------
+
+/**
+ * Same clipboard-first UX as the dev flow, but enforces `pk_live_` / `sk_live_`.
+ * Falls back to manual entry if the clipboard doesn't have both keys (or if the
+ * user picks manual).
+ */
+async function collectProdClerkKeys(): Promise<{ publishable: string; secret: string }> {
+  const mode = (await exitOnCancel(
+    await p.select({
+      message: "How do you want to provide your prod Clerk keys?",
+      options: [
+        { value: "clipboard", label: "Read from clipboard (.env block from Clerk)" },
+        { value: "manual", label: "Type each key separately" },
+      ],
+      initialValue: "clipboard",
+    }),
+  )) as "clipboard" | "manual";
+
+  if (mode === "clipboard") {
+    await exitOnCancel(
+      await p.confirm({
+        message: "Copy the prod .env block from Clerk's API Keys page, then press Enter.",
+        initialValue: true,
+      }),
+    );
+    const parsed = parseEnvObject(await readClipboard());
+    const pk = parsed.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+    const sk = parsed.CLERK_SECRET_KEY;
+    if (pk?.startsWith("pk_live_") && sk?.startsWith("sk_live_")) {
+      success(`Found prod keys in clipboard (${pk.slice(0, 18)}…).`);
+      return { publishable: pk, secret: sk };
+    }
+    if (pk?.startsWith("pk_test_") || sk?.startsWith("sk_test_")) {
+      warn("Clipboard contained dev (pk_test_/sk_test_) keys. We need prod keys here.");
+    } else {
+      warn("Clipboard didn't contain both prod Clerk keys — falling back to manual entry.");
+    }
+  }
+
+  const publishable = await exitOnCancel(
+    await p.text({
+      message: "PROD NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY (pk_live_…)",
+      validate: (v) => (v?.startsWith("pk_live_") ? undefined : "Should start with pk_live_"),
+    }),
+  );
+  const secret = await exitOnCancel(
+    await p.password({
+      message: "PROD CLERK_SECRET_KEY (sk_live_…)",
+      validate: (v) => (v?.startsWith("sk_live_") ? undefined : "Should start with sk_live_"),
+    }),
+  );
+  return { publishable, secret };
+}
 
 async function runConvexProd(prod: ReturnType<typeof loadEnv>, force: boolean) {
   header("Convex (prod)", "Provision prod deployment + push env");

@@ -93,3 +93,12 @@ export function envToObject(file: EnvFile): Record<string, string> {
   }
   return out;
 }
+
+/** Parse a raw .env string straight into a { KEY: value } map. */
+export function parseEnvObject(content: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of parseEnv(content)) {
+    if (line.type === "kv") out[line.key] = line.value;
+  }
+  return out;
+}

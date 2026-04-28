@@ -9,8 +9,9 @@
 import { resolve } from "node:path";
 import pc from "picocolors";
 import { ClerkClient } from "./lib/clerk";
+import { readClipboard } from "./lib/clipboard";
 import { setEnvMany as convexSetEnvMany, devOnce, devOnceAllowFail } from "./lib/convex";
-import { getEnv, loadEnv, saveEnv, setEnvMany } from "./lib/env";
+import { getEnv, loadEnv, parseEnvObject, saveEnv, setEnvMany } from "./lib/env";
 import { openUrl } from "./lib/open";
 import { ANALYTICS_HOSTS, PostHogClient, type PostHogRegion } from "./lib/posthog";
 import { exitOnCancel, fail, header, info, note, p, success, warn } from "./lib/prompts";
@@ -138,7 +139,8 @@ async function runClerkPhase(env: ReturnType<typeof loadEnv>, force: boolean) {
     [
       "1. We'll open the Clerk dashboard. Create a new app (or pick one).",
       "2. Enable the sign-in methods you want (email + Google is a fine default).",
-      "3. Copy the dev publishable + secret keys back here.",
+      "3. From `API Keys`, click `.env` to copy both keys at once — we'll read them",
+      "   from your clipboard. Or pick `Type each key` to paste them individually.",
     ].join("\n"),
     "Clerk dashboard",
   );
@@ -148,21 +150,7 @@ async function runClerkPhase(env: ReturnType<typeof loadEnv>, force: boolean) {
   );
   if (proceed) openUrl("https://dashboard.clerk.com/apps/new");
 
-  const publishable = await exitOnCancel(
-    await p.text({
-      message: "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY (starts with pk_test_…)",
-      validate: (v) =>
-        v?.startsWith("pk_") ? undefined : "Should start with pk_test_ or pk_live_",
-    }),
-  );
-
-  const secret = await exitOnCancel(
-    await p.password({
-      message: "CLERK_SECRET_KEY (starts with sk_test_…)",
-      validate: (v) =>
-        v?.startsWith("sk_") ? undefined : "Should start with sk_test_ or sk_live_",
-    }),
-  );
+  const { publishable, secret } = await collectClerkKeys();
 
   const spinner = p.spinner();
   spinner.start("Wiring up Clerk via Backend API…");
@@ -188,6 +176,61 @@ async function runClerkPhase(env: ReturnType<typeof loadEnv>, force: boolean) {
   }
 
   return env;
+}
+
+/**
+ * Prompt the user for Clerk keys, defaulting to a clipboard read of the
+ * `.env` block Clerk's dashboard offers as a one-click copy. Falls back to
+ * per-key prompts if the clipboard is empty / missing keys / user picks manual.
+ */
+async function collectClerkKeys(): Promise<{ publishable: string; secret: string }> {
+  const mode = (await exitOnCancel(
+    await p.select({
+      message: "How do you want to provide your Clerk keys?",
+      options: [
+        { value: "clipboard", label: "Read from clipboard (.env block from Clerk)" },
+        { value: "manual", label: "Type each key separately" },
+      ],
+      initialValue: "clipboard",
+    }),
+  )) as "clipboard" | "manual";
+
+  if (mode === "clipboard") {
+    await exitOnCancel(
+      await p.confirm({
+        message: "Copy the .env block from Clerk's API Keys page, then press Enter.",
+        initialValue: true,
+      }),
+    );
+    const parsed = parseEnvObject(await readClipboard());
+    const pk = parsed.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+    const sk = parsed.CLERK_SECRET_KEY;
+    if (pk?.startsWith("pk_") && sk?.startsWith("sk_")) {
+      success(`Found both keys in clipboard (${pk.slice(0, 18)}…).`);
+      return { publishable: pk, secret: sk };
+    }
+    warn(
+      "Clipboard didn't contain both NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY — falling back to manual entry.",
+    );
+  }
+
+  const publishable = await exitOnCancel(
+    await p.text({
+      message: "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY (starts with pk_test_…)",
+      validate: (v) =>
+        v?.startsWith("pk_") ? undefined : "Should start with pk_test_ or pk_live_",
+    }),
+  );
+
+  const secret = await exitOnCancel(
+    await p.password({
+      message: "CLERK_SECRET_KEY (starts with sk_test_…)",
+      validate: (v) =>
+        v?.startsWith("sk_") ? undefined : "Should start with sk_test_ or sk_live_",
+    }),
+  );
+
+  return { publishable, secret };
 }
 
 // ---------------------------------------------------------------------------

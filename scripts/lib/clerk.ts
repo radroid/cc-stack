@@ -134,7 +134,7 @@ export function frontendApiFromPublishableKey(pk: string): string {
     throw new Error("Could not base64-decode the publishable key payload.");
   }
   const host = decoded.replace(/\$+$/, "");
-  if (!host || !host.includes(".")) {
+  if (!host?.includes(".")) {
     throw new Error(`Decoded publishable key payload doesn't look like a hostname: ${decoded}`);
   }
   return host;
