@@ -4,12 +4,20 @@ import pc from "picocolors";
 import { exitOnCancel, p } from "./prompts";
 
 export function openUrl(url: string): void {
-  const cmd =
-    process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+  // `start` is a cmd.exe builtin — calling it via plain spawn fails on
+  // Windows. Route through cmd.exe with the empty title arg start expects.
+  const isWin = process.platform === "win32";
+  const cmd = isWin ? "cmd" : process.platform === "darwin" ? "open" : "xdg-open";
+  const args = isWin ? ["/c", "start", "", url] : [url];
   try {
-    spawn(cmd, [url], { stdio: "ignore", detached: true }).unref();
+    const child = spawn(cmd, args, { stdio: "ignore", detached: true });
+    // spawn errors (command-not-found, EACCES, …) come through async.
+    child.on("error", () => {
+      // ignore — the URL is already printed by confirmOpen for the user.
+    });
+    child.unref();
   } catch {
-    // ignore — we'll print the URL anyway
+    // ignore — synchronous spawn errors are rare; URL is shown either way.
   }
 }
 

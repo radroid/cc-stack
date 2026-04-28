@@ -27,8 +27,18 @@ function parseArgs() {
   const args = process.argv.slice(2);
   const force = args.includes("--force");
   const onlyArg = args.find((a) => a.startsWith("--only="));
-  const only = onlyArg ? (onlyArg.slice(7).split(",").filter(Boolean) as Phase[]) : ALL_PHASES;
-  return { force, only };
+  if (!onlyArg) return { force, only: ALL_PHASES };
+  const requested = onlyArg.slice(7).split(",").filter(Boolean);
+  const valid = new Set<string>(ALL_PHASES);
+  const unknown = requested.filter((p) => !valid.has(p));
+  if (unknown.length > 0) {
+    console.error(
+      `\nUnknown --only value(s): ${unknown.join(", ")}\n` +
+        `Valid phases: ${ALL_PHASES.join(", ")}\n`,
+    );
+    process.exit(2);
+  }
+  return { force, only: requested as Phase[] };
 }
 
 async function main() {
@@ -237,7 +247,11 @@ async function collectClerkKeys(): Promise<{ publishable: string; secret: string
 async function runVapidPhase(env: ReturnType<typeof loadEnv>, force: boolean) {
   header("Web Push", "VAPID keypair for push notifications");
 
-  if (getEnv(env, "NEXT_PUBLIC_VAPID_PUBLIC_KEY") && !force) {
+  const haveAllVapid =
+    getEnv(env, "NEXT_PUBLIC_VAPID_PUBLIC_KEY") &&
+    getEnv(env, "VAPID_PRIVATE_KEY") &&
+    getEnv(env, "VAPID_SUBJECT");
+  if (haveAllVapid && !force) {
     success("VAPID already configured. Skipping.");
     return env;
   }

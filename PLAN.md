@@ -34,7 +34,7 @@ Everything else is automatable.
 
 ## CLI architecture
 
-```
+```text
 scripts/
   setup.ts                    # dev orchestrator — entry for `bun run setup`
   setup-prod.ts               # prod additions — entry for `bun run setup:prod`
@@ -58,7 +58,7 @@ Each integration module exports a `setupDev()` and `setupProd()` so the orchestr
 
 ## Dev flow — `bun run setup`
 
-```
+```text
 1. WELCOME
    - Header, version, "this will configure: convex, clerk, posthog (optional), web push"
    - Confirm project name (from package.json by default; offer to rename)
@@ -109,7 +109,7 @@ State machine: each integration is **resumable**. If the user ctrl+c's mid-Clerk
 
 ## Prod flow — `bun run setup:prod`
 
-```
+```text
 1. PRECHECKS
    - Verify .env.local exists and has dev keys
    - Verify `bunx wrangler whoami` (offer to run `bunx wrangler login` if not authed)
@@ -142,7 +142,8 @@ State machine: each integration is **resumable**. If the user ctrl+c's mid-Clerk
 5. POSTHOG (prod environment)
    - If PostHog was set up in dev, re-use the personal API key (cached in OS keychain via `bun secrets` if available, otherwise re-prompt)
    - Create/find a "production" environment in the same project; copy its api_token
-   - Write NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN_PROD to .env.production
+   - Write NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN to .env.production
+     (same env var name as dev — different per-env value, never a second name)
    - (And a "preview" environment too, for branch deploys later)
 
 6. CLOUDFLARE SECRETS

@@ -22,12 +22,17 @@ export function parseEnv(content: string): EnvLine[] {
     const m = KV_RE.exec(raw);
     if (!m) return { type: "comment", raw } as const;
     let value = m[2];
-    // Strip surrounding quotes if balanced.
+    // Strip surrounding quotes if balanced. Only quoted values keep `#`
+    // verbatim — unquoted ones get an inline `# comment` stripped.
     if (
       (value.startsWith('"') && value.endsWith('"')) ||
       (value.startsWith("'") && value.endsWith("'"))
     ) {
       value = value.slice(1, -1);
+    } else {
+      const hashIdx = value.indexOf(" #");
+      if (hashIdx >= 0) value = value.slice(0, hashIdx);
+      value = value.trimEnd();
     }
     return { type: "kv", key: m[1], value, raw } as const;
   });

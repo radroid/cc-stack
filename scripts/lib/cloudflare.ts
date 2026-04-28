@@ -39,11 +39,17 @@ export async function getWorkersDevSubdomain(accountId: string): Promise<string 
   const token = process.env.CLOUDFLARE_API_TOKEN;
   if (!token) return null;
   type Resp = { result: { subdomain: string } };
-  const res = await request<Resp>(
-    `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/subdomain`,
-    { headers: { Authorization: `Bearer ${token}` } },
-  );
-  return res.result?.subdomain ?? null;
+  try {
+    const res = await request<Resp>(
+      `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/subdomain`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    return res.result?.subdomain ?? null;
+  } catch {
+    // Preview lookup is optional — caller falls back to "we'll know after
+    // first deploy" rather than aborting setup:prod.
+    return null;
+  }
 }
 
 /** Pipe a single secret to `wrangler secret put`. */
