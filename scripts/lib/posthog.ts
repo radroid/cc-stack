@@ -14,9 +14,9 @@ export const ANALYTICS_HOSTS: Record<PostHogRegion, string> = {
   eu: "https://eu.i.posthog.com",
 };
 
-type User = {
-  organization: { id: string; name: string };
-  organizations: { id: string; name: string }[];
+type Organization = {
+  id: string;
+  name: string;
 };
 
 type Project = {
@@ -46,10 +46,29 @@ export class PostHogClient {
     return { Authorization: `Bearer ${this.personalApiKey}` };
   }
 
-  /** Returns the user's primary org id. */
+  /**
+   * Returns the user's primary org id.
+   *
+   * Uses `/api/organizations/@current/` (covered by the `organization:read`
+   * scope on scoped `phx_` personal API keys). We avoid `/api/users/@me/`
+   * because that endpoint requires a separate `user:read` scope, which our
+   * setup instructions didn't ask for.
+   */
   async getOrgId(): Promise<string> {
-    const user = await request<User>(`${this.base}/api/users/@me/`, { headers: this.headers() });
-    return user.organization?.id ?? user.organizations?.[0]?.id;
+    try {
+      const org = await request<Organization>(`${this.base}/api/organizations/@current/`, {
+        headers: this.headers(),
+      });
+      return org.id;
+    } catch (err) {
+      if (err instanceof HttpError && err.status === 403) {
+        throw new Error(
+          "PostHog rejected the personal API key (403). Make sure it has scope " +
+            "`organization:read` (and `project:write` to create projects/environments).",
+        );
+      }
+      throw err;
+    }
   }
 
   async listProjects(orgId: string): Promise<Project[]> {
