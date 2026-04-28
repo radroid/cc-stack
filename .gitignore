@@ -53,3 +53,5 @@ convex/_generated/
 .idea/
 .claude/
 .agents/
+skills-lock.json
+.mcp.json

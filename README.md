@@ -37,24 +37,26 @@ A PWA-ready, opinionated Next.js starter wired with the full Create➕Club stack
 bunx create-next-app@latest my-app -e https://github.com/radroid/cc-stack
 cd my-app
 bun install
-cp .env.example .env.local
+bun run setup    # interactive — wires Convex, Clerk, VAPID, optionally PostHog
 ```
 
-Then follow [SETUP.md](./SETUP.md) — it lists every account login and CLI command in order.
+The `setup` CLI handles every cross-wire automatically (Clerk JWT issuer → Convex env, VAPID → both sides, etc.). You'll only paste values that no API can give us. See [SETUP.md](./SETUP.md) for the full flow and a manual fallback.
 
-## Quick start (after SETUP.md)
+## Quick start (after `bun run setup`)
 
 ```bash
-bun run convex   # in one terminal — Convex dev server
-bun run dev      # in another — Next.js dev server
+bunx convex dev  # in one terminal
+bun run dev      # in another
 ```
 
-Open <http://localhost:3000>.
+Open <http://localhost:3000>. When you're ready to deploy, run `bun run setup:prod`, then `bun run deploy`.
 
 ## Scripts
 
 | Command | What it does |
 | --- | --- |
+| `bun run setup` | Interactive dev provisioning (Convex + Clerk + VAPID + PostHog) |
+| `bun run setup:prod` | Interactive prod provisioning (Cloudflare + cross-wire) |
 | `bun run dev` | Next.js dev server (Turbopack) |
 | `bun run convex` | Convex dev (watches `convex/` and deploys) |
 | `bun run build` | Production build — must pass before committing |
